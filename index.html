@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RHD Detection — IBA Karachi</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#060b14;--surface:#0d1524;--surface2:#111d2e;--border:#1e3050;--ecg:#00e5ff;--pcg:#ff6b35;--sync:#a78bfa;--green:#00f5a0;--yellow:#fbbf24;--red:#f87171;--text:#e2e8f0;--muted:#64748b;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;overflow-x:hidden;}
+
+/* VOICE BAR */
+#voiceBar{position:fixed;bottom:0;left:0;right:0;z-index:200;background:rgba(6,11,20,0.97);border-top:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:16px;transform:translateY(100%);transition:transform 0.35s ease;}
+#voiceBar.show{transform:translateY(0);}
+.vb-icon{width:36px;height:36px;border-radius:50%;border:1px solid var(--ecg);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all 0.2s;}
+.vb-icon:hover{background:rgba(0,229,255,0.1);}
+.vb-icon svg{width:16px;height:16px;}
+.vb-waves{display:flex;align-items:center;gap:3px;flex-shrink:0;}
+.vb-wave{width:3px;border-radius:2px;background:var(--ecg);animation:waveAnim 0.8s ease-in-out infinite;}
+.vb-wave:nth-child(1){height:8px;animation-delay:0s}
+.vb-wave:nth-child(2){height:16px;animation-delay:0.1s}
+.vb-wave:nth-child(3){height:22px;animation-delay:0.2s}
+.vb-wave:nth-child(4){height:14px;animation-delay:0.3s}
+.vb-wave:nth-child(5){height:8px;animation-delay:0.4s}
+.vb-waves.paused .vb-wave{animation-play-state:paused;height:4px!important;}
+@keyframes waveAnim{0%,100%{transform:scaleY(0.4)}50%{transform:scaleY(1)}}
+.vb-text{flex:1;min-width:0;}
+.vb-section{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--ecg);margin-bottom:2px;}
+.vb-caption{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.vb-caption span{color:var(--text);}
+.vb-controls{display:flex;gap:8px;flex-shrink:0;}
+.vb-btn{background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px;font-family:'Space Mono',monospace;padding:5px 10px;cursor:pointer;transition:all 0.2s;letter-spacing:1px;}
+.vb-btn:hover{border-color:var(--ecg);color:var(--ecg);}
+.vb-btn.active{border-color:var(--ecg);color:var(--ecg);background:rgba(0,229,255,0.08);}
+.vb-progress{position:absolute;top:0;left:0;height:1px;background:var(--ecg);transition:width 0.3s linear;width:0%;}
+
+/* SECTION INDICATOR */
+.section-reading{position:relative;}
+.section-reading::before{content:'';position:absolute;left:-24px;top:0;bottom:0;width:2px;background:var(--ecg);border-radius:2px;animation:readPulse 1.5s ease-in-out infinite;}
+@keyframes readPulse{0%,100%{opacity:0.3}50%{opacity:1}}
+
+/* HERO */
+.hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:60px 24px;position:relative;overflow:hidden;}
+#heartCanvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;opacity:0.35;}
+.hero-content{position:relative;z-index:2;}
+.hero h1{font-family:'Space Mono',monospace;font-size:clamp(20px,4.5vw,48px);font-weight:700;line-height:1.18;margin-bottom:18px;background:linear-gradient(135deg,#fff 0%,#00e5ff 60%,#a78bfa 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.hero p{font-size:15px;color:var(--muted);max-width:540px;line-height:1.75;margin:0 auto 44px;}
+.stats-row{display:flex;gap:40px;flex-wrap:wrap;justify-content:center;margin-bottom:52px;}
+.stat-num{font-family:'Space Mono',monospace;font-size:32px;font-weight:700;color:var(--ecg);}
+.stat-label{font-size:11px;color:var(--muted);margin-top:4px;letter-spacing:1px;}
+.btn-run{background:var(--ecg);color:#000;border:none;padding:16px 48px;font-family:'Space Mono',monospace;font-size:13px;font-weight:700;letter-spacing:2px;border-radius:4px;cursor:pointer;transition:all 0.2s;}
+.btn-run:hover{transform:translateY(-2px);box-shadow:0 0 32px rgba(0,229,255,0.5);}
+.scroll-hint{position:absolute;bottom:28px;font-size:11px;color:var(--muted);letter-spacing:2px;animation:bounce 2s infinite;z-index:2;}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{opacity:0;animation:fadeUp 0.7s ease forwards;}
+.fade-up:nth-child(1){animation-delay:0.1s}.fade-up:nth-child(2){animation-delay:0.2s}.fade-up:nth-child(3){animation-delay:0.3s}.fade-up:nth-child(4){animation-delay:0.4s}
+
+/* NAV */
+.pipeline-nav{position:sticky;top:0;z-index:100;background:rgba(6,11,20,0.96);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 24px;overflow-x:auto;}
+.pipeline-inner{display:flex;align-items:stretch;max-width:1100px;margin:0 auto;}
+.nav-step{flex:1;min-width:100px;padding:12px 6px;text-align:center;border-bottom:2px solid transparent;cursor:pointer;transition:all 0.2s;}
+.nav-step:hover{border-color:var(--border);}
+.nav-step.active{border-color:var(--ecg);}
+.nav-step-num{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:2px;margin-bottom:2px;}
+.nav-step-name{font-size:10px;color:var(--muted);}
+.nav-step.active .nav-step-name{color:var(--ecg);}
+
+/* LAYOUT */
+.section{max-width:1100px;margin:0 auto;padding:80px 24px;}
+.divider{height:1px;background:var(--border);max-width:1100px;margin:0 auto;}
+.step-label{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--ecg);text-transform:uppercase;margin-bottom:10px;}
+.section-title{font-family:'Space Mono',monospace;font-size:clamp(18px,3vw,28px);font-weight:700;margin-bottom:10px;}
+.section-desc{color:var(--muted);font-size:14px;line-height:1.8;max-width:640px;margin-bottom:36px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;position:relative;overflow:hidden;}
+.card-top{height:2px;position:absolute;top:0;left:0;right:0;}
+.card-label{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+@media(max-width:680px){.grid2,.grid3{grid-template-columns:1fr}.stats-row{gap:24px}}
+canvas{width:100%;display:block;}
+.highlight-box{background:var(--surface2);border-left:3px solid var(--ecg);border-radius:0 8px 8px 0;padding:14px 18px;font-size:13px;color:var(--muted);line-height:1.75;margin-top:20px;}
+.highlight-box strong{color:var(--text);}
+.pp-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;}
+.pp-title{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1px;margin-bottom:14px;}
+.pp-list{list-style:none;}
+.pp-item{padding:9px 0;border-bottom:1px solid var(--border);font-size:13px;color:var(--muted);display:flex;gap:10px;line-height:1.5;}
+.pp-item:last-child{border-bottom:none;}
+.pp-item::before{content:'—';color:var(--border);flex-shrink:0;}
+.pp-item strong{color:var(--text);}
+.ae-diagram{display:flex;align-items:center;justify-content:center;gap:0;overflow-x:auto;padding:16px 0;}
+.ae-block{text-align:center;padding:16px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;min-width:72px;}
+.ae-block.bottleneck{background:var(--surface2);border-color:var(--sync);box-shadow:0 0 20px rgba(167,139,250,0.2);}
+.ae-arrow-svg{flex-shrink:0;color:var(--border);padding:0 4px;}
+.ae-label{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--muted);margin-bottom:4px;}
+.ae-dim{font-family:'Space Mono',monospace;font-size:14px;font-weight:700;}
+.ae-sub{font-size:9px;color:var(--muted);margin-top:3px;}
+.sync-flow{display:grid;grid-template-columns:1fr 80px 1fr;gap:16px;align-items:center;margin-bottom:20px;}
+.sync-mid{display:flex;flex-direction:column;align-items:center;gap:10px;}
+.sync-arrow-box{background:var(--surface2);border:1px solid var(--sync);border-radius:8px;padding:10px 14px;text-align:center;width:100%;}
+.sync-arrow-label{font-family:'Space Mono',monospace;font-size:9px;color:var(--sync);letter-spacing:1px;}
+.imbalance-viz{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px;}
+.imb-title{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--muted);margin-bottom:20px;}
+.imb-bar-row{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
+.imb-label{font-size:13px;width:90px;flex-shrink:0;}
+.imb-track{flex:1;height:36px;background:var(--surface2);border-radius:4px;overflow:hidden;}
+.imb-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:12px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;transition:width 1.5s cubic-bezier(0.16,1,0.3,1);width:0%;}
+.imb-num{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;width:50px;flex-shrink:0;text-align:right;}
+.results-table-wrap{margin-top:32px;overflow-x:auto;}
+.results-table{width:100%;border-collapse:collapse;}
+.results-table th{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--muted);padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);}
+.results-table td{padding:14px 16px;font-size:13px;border-bottom:1px solid rgba(30,48,80,0.5);}
+.results-table tr.best-row td{background:rgba(0,229,255,0.04);}
+.results-table tr.best-row td:first-child{border-left:2px solid var(--ecg);}
+.val-green{font-family:'Space Mono',monospace;font-weight:700;color:var(--green);}
+.val-cyan{font-family:'Space Mono',monospace;color:var(--ecg);}
+.val-sync{font-family:'Space Mono',monospace;color:var(--sync);}
+.recall-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:5px;}
+.recall-fill{height:100%;border-radius:3px;background:var(--green);transition:width 1.5s cubic-bezier(0.16,1,0.3,1);width:0%;}
+.model-name{font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.star-badge{background:rgba(0,229,255,0.15);color:var(--ecg);font-size:9px;font-family:'Space Mono',monospace;letter-spacing:1px;padding:3px 7px;border-radius:3px;border:1px solid rgba(0,229,255,0.3);}
+.table-note{font-size:12px;color:var(--muted);line-height:1.7;margin-top:16px;padding:14px;background:var(--surface2);border-radius:8px;}
+.result-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:44px;text-align:center;position:relative;overflow:hidden;margin-top:32px;transition:all 0.4s;}
+.result-card.detected{border-color:rgba(255,107,53,0.5);box-shadow:0 0 60px rgba(255,107,53,0.08);}
+.result-card.normal{border-color:rgba(0,245,160,0.5);box-shadow:0 0 60px rgba(0,245,160,0.08);}
+.result-badge{display:inline-block;padding:10px 30px;border-radius:30px;font-family:'Space Mono',monospace;font-size:15px;font-weight:700;letter-spacing:2px;margin-bottom:22px;}
+.result-badge.detected{background:rgba(255,107,53,0.12);color:var(--pcg);border:1px solid var(--pcg);}
+.result-badge.normal{background:rgba(0,245,160,0.12);color:var(--green);border:1px solid var(--green);}
+.confidence-ring{width:140px;height:140px;margin:0 auto 18px;position:relative;}
+.confidence-ring svg{transform:rotate(-90deg);}
+.ring-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;}
+.ring-pct{font-family:'Space Mono',monospace;font-size:24px;font-weight:700;display:block;}
+.ring-lbl{font-size:9px;color:var(--muted);letter-spacing:1px;}
+.demo-btn{padding:9px 22px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;transition:all 0.2s;}
+.demo-btn:hover,.demo-btn.active{border-color:var(--ecg);color:var(--ecg);}
+.demo-controls{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px;}
+.num-big{font-family:'Space Mono',monospace;font-size:30px;font-weight:700;}
+footer{text-align:center;padding:60px 20px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);}
+footer span{color:var(--ecg);}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- VOICE BAR -->
+<div id="voiceBar">
+  <div class="vb-progress" id="vbProgress"></div>
+  <div class="vb-icon" id="vbPlayPause" onclick="togglePause()">
+    <svg id="vbPlayIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ecg);display:none"><polygon points="5,3 19,12 5,21"/></svg>
+    <svg id="vbPauseIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ecg)"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+  </div>
+  <div class="vb-waves" id="vbWaves">
+    <div class="vb-wave"></div><div class="vb-wave"></div><div class="vb-wave"></div><div class="vb-wave"></div><div class="vb-wave"></div>
+  </div>
+  <div class="vb-text">
+    <div class="vb-section" id="vbSection">INTRODUCTION</div>
+    <div class="vb-caption" id="vbCaption"><span>Starting voiceover...</span></div>
+  </div>
+  <div class="vb-controls">
+    <button class="vb-btn" id="vbMuteBtn" onclick="toggleMute()">MUTE</button>
+    <button class="vb-btn" onclick="stopVoice()">STOP</button>
+  </div>
+</div>
+
+<!-- HERO -->
+<section class="hero" id="sectionHero" data-voice="hero">
+  <canvas id="heartCanvas"></canvas>
+  <div class="hero-content">
+    <h1>Detection of Subclinical RHD<br>in Children using Deep<br>Learning Algorithm</h1>
+    <p>A cross-modal deep learning framework that synchronizes ECG and PCG signals to identify Rheumatic Heart Disease in school-aged children — before symptoms appear, before valves are permanently damaged.</p>
+    <div class="stats-row">
+      <div class="fade-up"><div class="stat-num">100%</div><div class="stat-label">Sensitivity</div></div>
+      <div class="fade-up"><div class="stat-num">0·882</div><div class="stat-label">AUPRC</div></div>
+      <div class="fade-up"><div class="stat-num">612</div><div class="stat-label">Children Screened</div></div>
+      <div class="fade-up"><div class="stat-num">6</div><div class="stat-label">RHD Cases</div></div>
+    </div>
+    <button class="btn-run" onclick="document.getElementById('step1').scrollIntoView({behavior:'smooth'})">▶ EXPLORE FRAMEWORK</button>
+  </div>
+  <div class="scroll-hint">↓ SCROLL — VOICE FOLLOWS AUTOMATICALLY</div>
+</section>
+
+<nav class="pipeline-nav">
+  <div class="pipeline-inner">
+    <div class="nav-step active" onclick="goTo('step1',this)"><div class="nav-step-num">01</div><div class="nav-step-name">Acquisition</div></div>
+    <div class="nav-step" onclick="goTo('step2',this)"><div class="nav-step-num">02</div><div class="nav-step-name">Preprocessing</div></div>
+    <div class="nav-step" onclick="goTo('step3',this)"><div class="nav-step-num">03</div><div class="nav-step-name">Autoencoders</div></div>
+    <div class="nav-step" onclick="goTo('step4',this)"><div class="nav-step-num">04</div><div class="nav-step-name">Synchronization</div></div>
+    <div class="nav-step" onclick="goTo('step5',this)"><div class="nav-step-num">05</div><div class="nav-step-name">Feature Selection</div></div>
+    <div class="nav-step" onclick="goTo('step6',this)"><div class="nav-step-num">06</div><div class="nav-step-name">Classification</div></div>
+  </div>
+</nav>
+
+<!-- STEP 1 -->
+<section class="section" id="step1" data-voice="step1">
+  <div class="step-label">Step 01 / 06</div>
+  <h2 class="section-title">Signal Acquisition</h2>
+  <p class="section-desc">Data collected from <strong style="color:var(--text)">700 school-aged children (ages 5–15)</strong> during school-based screening camps in collaboration with <strong style="color:var(--text)">SIUT Hospital, Karachi</strong>. A Digital Auscultation System linked to a smartphone app captured both ECG and PCG signals. Only <strong style="color:var(--ecg)">mitral valve recordings</strong> proceed to classification — mitral involvement is reported in 60.2% of RHD cases.</p>
+  <div class="demo-controls">
+    <button class="demo-btn active" onclick="setPatient('rhd',this)">Patient: RHD Positive</button>
+    <button class="demo-btn" onclick="setPatient('normal',this)">Patient: Normal Child</button>
+  </div>
+  <div class="grid2">
+    <div class="card"><div class="card-top" style="background:var(--ecg)"></div>
+      <div class="card-label" style="color:var(--ecg)"><div class="dot" style="background:var(--ecg)"></div>ECG — Electrocardiogram</div>
+      <canvas id="ecgRawLive" height="85"></canvas>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px;">Records the heart's <strong style="color:var(--text)">electrical activity</strong> — rhythm, conduction, QRS morphology</div>
+    </div>
+    <div class="card"><div class="card-top" style="background:var(--pcg)"></div>
+      <div class="card-label" style="color:var(--pcg)"><div class="dot" style="background:var(--pcg)"></div>PCG — Phonocardiogram</div>
+      <canvas id="pcgRawLive" height="85"></canvas>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px;">Records <strong style="color:var(--text)">heart sounds</strong> — S1, systole, S2, diastole. RHD causes abnormal murmurs in silent phases</div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- STEP 2 -->
+<section class="section" id="step2" data-voice="step2">
+  <div class="step-label">Step 02 / 06</div>
+  <h2 class="section-title">Signal Preprocessing</h2>
+  <p class="section-desc">ECG and PCG are preprocessed through <strong style="color:var(--text)">separate pipelines</strong> because each signal carries different types of noise. Raw physiological signals contain baseline drift, powerline interference, and environmental noise — if uncorrected, these degrade the features learned by the neural network.</p>
+  <div class="grid2" style="margin-bottom:18px;">
+    <div class="pp-box">
+      <div class="pp-title" style="color:var(--pcg)">PCG PREPROCESSING PIPELINE</div>
+      <ul class="pp-list">
+        <li class="pp-item"><strong>Noise Reduction</strong> — removes environmental noise and stethoscope interference</li>
+        <li class="pp-item"><strong>Baseline Correction</strong> — removes slow signal drift hiding heart sound components</li>
+        <li class="pp-item"><strong>Artifact Suppression</strong> — filters movement and recording disturbances</li>
+        <li class="pp-item"><strong>Resampling</strong> — standardised to fixed sampling rate</li>
+      </ul>
+    </div>
+    <div class="pp-box">
+      <div class="pp-title" style="color:var(--ecg)">ECG PREPROCESSING PIPELINE</div>
+      <ul class="pp-list">
+        <li class="pp-item"><strong>Baseline Drift Removal</strong> — corrects low-frequency wander</li>
+        <li class="pp-item"><strong>Denoising</strong> — suppresses powerline and high-frequency noise</li>
+        <li class="pp-item"><strong>Resampling</strong> — matched to PCG sampling rate</li>
+        <li class="pp-item"><strong>Amplitude Normalisation</strong> — reduces inter-subject variation</li>
+      </ul>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="card"><div class="card-top" style="background:rgba(100,116,139,0.5)"></div><div class="card-label" style="color:var(--muted)">ECG — Raw (Before)</div><canvas id="ecgBefore" height="70"></canvas></div>
+    <div class="card"><div class="card-top" style="background:var(--ecg)"></div><div class="card-label" style="color:var(--ecg)">ECG — Clean (After)</div><canvas id="ecgAfter" height="70"></canvas></div>
+  </div>
+  <div class="grid2" style="margin-top:0;">
+    <div class="card"><div class="card-top" style="background:rgba(100,116,139,0.5)"></div><div class="card-label" style="color:var(--muted)">PCG — Raw (Before)</div><canvas id="pcgBefore" height="70"></canvas></div>
+    <div class="card"><div class="card-top" style="background:var(--pcg)"></div><div class="card-label" style="color:var(--pcg)">PCG — Clean (After)</div><canvas id="pcgAfter" height="70"></canvas></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- STEP 3 -->
+<section class="section" id="step3" data-voice="step3">
+  <div class="step-label">Step 03 / 06</div>
+  <h2 class="section-title">Separate Vanilla Autoencoders</h2>
+  <p class="section-desc">Two separate <strong style="color:var(--text)">Vanilla Autoencoders</strong> — one for ECG, one for PCG — compress each clean signal into a compact <strong style="color:var(--sync)">64-dimensional bottleneck</strong>. Each autoencoder learns only what matters most in its own signal, discarding noise while preserving the cardiac patterns needed for synchronization and classification.</p>
+  <div style="margin-bottom:16px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--ecg);margin-bottom:10px;">ECG AUTOENCODER</div>
+    <div class="ae-diagram">
+      <div class="ae-block"><div class="ae-label" style="color:var(--ecg)">INPUT</div><div class="ae-dim" style="color:var(--ecg)">1000</div><div class="ae-sub">ECG samples</div></div>
+      <svg class="ae-arrow-svg" width="28" height="18"><path d="M2 9 L24 9 M17 3 L24 9 L17 15" stroke="#1e3050" stroke-width="1.5" fill="none"/></svg>
+      <div class="ae-block"><div class="ae-label">ENCODER</div><div class="ae-dim" style="color:var(--ecg)">↓</div><div class="ae-sub">compress</div></div>
+      <svg class="ae-arrow-svg" width="28" height="18"><path d="M2 9 L24 9 M17 3 L24 9 L17 15" stroke="#1e3050" stroke-width="1.5" fill="none"/></svg>
+      <div class="ae-block bottleneck"><div class="ae-label" style="color:var(--sync)">BOTTLENECK</div><div class="ae-dim" style="color:var(--sync)">64-dim</div><div class="ae-sub" style="color:var(--sync)">latent</div></div>
+      <svg class="ae-arrow-svg" width="28" height="18"><path d="M2 9 L24 9 M17 3 L24 9 L17 15" stroke="#1e3050" stroke-width="1.5" fill="none"/></svg>
+      <div class="ae-block"><div class="ae-label">DECODER</div><div class="ae-dim" style="color:var(--muted)">↑</div><div class="ae-sub">reconstruct</div></div>
+      <svg class="ae-arrow-svg" width="28" height="18"><path d="M2 9 L24 9 M17 3 L24 9 L17 15" stroke="#1e3050" stroke-width="1.5" fill="none"/></svg>
+      <div class="ae-block"><div class="ae-label" style="color:var(--ecg)">OUTPUT</div><div class="ae-dim" style="color:var(--ecg)">1000</div><div class="ae-sub">Reconstructed ECG</div></div>
+    </div>
+  </div>
+  <div style="margin-bottom:24px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--pcg);margin-bottom:10px;">PCG AUTOENCODER</div>
+    <div class="ae-diagram">
+      <div class="ae-block"><div class="ae-label" style="color:var(--pcg)">INPUT</div><div class="ae-dim" style="color:var(--pcg)">1000</div><div class="ae-sub">PCG samples</div></div>
+      <svg class="ae-arrow-svg" width="28" height="18"><path d="M2 9 L24 9 M17 3 L24 9 L17 15" stroke="#1e3050" stroke-width="1.5" fill="none"/></svg>
+      <div class="ae-block"><div class="ae-label">ENCODER</div><div class="ae-dim" style="color:var(--pcg)">↓</div><div class="ae-sub">compress</div></div>
+      <svg class="ae-arrow-svg" width="28" height="18"><path d="M2 9 L24 9 M17 3 L24 9 L17 15" stroke="#1e3050" stroke-width="1.5" fill="none"/></svg>
+      <div class="ae-block bottleneck"><div class="ae-label" style="color:var(--sync)">BOTTLENECK</div><div class="ae-dim" style="color:var(--sync)">64-dim</div><div class="ae-sub" style="color:var(--sync)">latent</div></div>
+      <svg class="ae-arrow-svg" width="28" height="18"><path d="M2 9 L24 9 M17 3 L24 9 L17 15" stroke="#1e3050" stroke-width="1.5" fill="none"/></svg>
+      <div class="ae-block"><div class="ae-label">DECODER</div><div class="ae-dim" style="color:var(--muted)">↑</div><div class="ae-sub">reconstruct</div></div>
+      <svg class="ae-arrow-svg" width="28" height="18"><path d="M2 9 L24 9 M17 3 L24 9 L17 15" stroke="#1e3050" stroke-width="1.5" fill="none"/></svg>
+      <div class="ae-block"><div class="ae-label" style="color:var(--pcg)">OUTPUT</div><div class="ae-dim" style="color:var(--pcg)">1000</div><div class="ae-sub">Reconstructed PCG</div></div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="card"><div class="card-top" style="background:var(--ecg)"></div><div class="card-label" style="color:var(--ecg)">ECG — Original vs Reconstructed</div><canvas id="reconEcg" height="80"></canvas><div style="display:flex;gap:16px;margin-top:8px;"><div style="font-size:11px;color:var(--muted)"><span style="color:var(--ecg)">━</span> Original</div><div style="font-size:11px;color:var(--muted)"><span style="color:rgba(0,229,255,0.35)">╌</span> Reconstructed</div></div></div>
+    <div class="card"><div class="card-top" style="background:var(--pcg)"></div><div class="card-label" style="color:var(--pcg)">PCG — Original vs Reconstructed</div><canvas id="reconPcg" height="80"></canvas><div style="display:flex;gap:16px;margin-top:8px;"><div style="font-size:11px;color:var(--muted)"><span style="color:var(--pcg)">━</span> Original</div><div style="font-size:11px;color:var(--muted)"><span style="color:rgba(255,107,53,0.35)">╌</span> Reconstructed</div></div></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- STEP 4 -->
+<section class="section" id="step4" data-voice="step4">
+  <div class="step-label">Step 04 / 06</div>
+  <h2 class="section-title">Cross-Modal Synchronization</h2>
+  <p class="section-desc">A cross-modal mapping module is trained on the two bottleneck representations. It learns to <strong style="color:var(--text)">reconstruct PCG from ECG bottleneck features</strong> and vice versa — simultaneously in both directions — forcing both signals into a shared physiologically aligned latent space.</p>
+  <div style="margin-bottom:20px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--sync);margin-bottom:12px;">DIRECTION 1 — ECG BOTTLENECK → RECONSTRUCTS PCG SIGNAL</div>
+    <div class="sync-flow">
+      <div class="card" style="text-align:center;"><div class="card-top" style="background:var(--ecg)"></div><div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--ecg);letter-spacing:1px;margin-bottom:8px;">ECG BOTTLENECK INPUT</div><canvas id="ecgBottleneckIn" height="70"></canvas><div style="font-size:11px;color:var(--muted);margin-top:8px;">64-dim ECG latent vector</div></div>
+      <div class="sync-mid"><div class="sync-arrow-box"><div class="sync-arrow-label">ECG → PCG</div><div style="font-size:20px;color:var(--sync);margin:4px 0;">→</div><div style="font-size:9px;color:var(--muted)">mapping network</div></div></div>
+      <div class="card" style="text-align:center;"><div class="card-top" style="background:var(--pcg)"></div><div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--pcg);letter-spacing:1px;margin-bottom:8px;">PCG RECONSTRUCTED</div><canvas id="pcgFromEcg" height="70"></canvas><div style="font-size:11px;color:var(--muted);margin-top:8px;">PCG rebuilt from ECG bottleneck</div></div>
+    </div>
+  </div>
+  <div style="margin-bottom:24px;">
+    <div style="font-family:'Space Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--sync);margin-bottom:12px;">DIRECTION 2 — PCG BOTTLENECK → RECONSTRUCTS ECG SIGNAL</div>
+    <div class="sync-flow">
+      <div class="card" style="text-align:center;"><div class="card-top" style="background:var(--pcg)"></div><div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--pcg);letter-spacing:1px;margin-bottom:8px;">PCG BOTTLENECK INPUT</div><canvas id="pcgBottleneckIn" height="70"></canvas><div style="font-size:11px;color:var(--muted);margin-top:8px;">64-dim PCG latent vector</div></div>
+      <div class="sync-mid"><div class="sync-arrow-box"><div class="sync-arrow-label">PCG → ECG</div><div style="font-size:20px;color:var(--sync);margin:4px 0;">←</div><div style="font-size:9px;color:var(--muted)">mapping network</div></div></div>
+      <div class="card" style="text-align:center;"><div class="card-top" style="background:var(--ecg)"></div><div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--ecg);letter-spacing:1px;margin-bottom:8px;">ECG RECONSTRUCTED</div><canvas id="ecgFromPcg" height="70"></canvas><div style="font-size:11px;color:var(--muted);margin-top:8px;">ECG rebuilt from PCG bottleneck</div></div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:20px;"><div class="card-top" style="background:var(--sync)"></div><div class="card-label" style="color:var(--sync)"><div class="dot" style="background:var(--sync)"></div>Synchronized Latent Representation — Live</div><canvas id="syncCanvas" height="95"></canvas><div style="display:flex;gap:20px;margin-top:10px;flex-wrap:wrap;"><div style="font-size:11px;color:var(--muted)"><span style="color:var(--ecg)">━</span> ECG latent</div><div style="font-size:11px;color:var(--muted)"><span style="color:var(--pcg)">━</span> PCG latent</div><div style="font-size:11px;color:var(--muted)"><span style="color:var(--sync)">━</span> Synchronized fused output</div></div></div>
+  <div class="grid3">
+    <div class="card" style="text-align:center;"><div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:8px;">COSINE SIMILARITY</div><div class="num-big" style="color:var(--sync)">0·731</div><div style="font-size:11px;color:var(--muted);margin-top:4px;">ECG → PCG alignment</div></div>
+    <div class="card" style="text-align:center;"><div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:8px;">PEARSON CORRELATION</div><div class="num-big" style="color:var(--sync)">0·924</div><div style="font-size:11px;color:var(--muted);margin-top:4px;">Temporal synchronization</div></div>
+    <div class="card" style="text-align:center;"><div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:8px;">VALIDATED WITH</div><div class="num-big" style="color:var(--sync);font-size:18px;margin-top:6px;">PCA + t-SNE<br>+ UMAP</div></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- STEP 5 -->
+<section class="section" id="step5" data-voice="step5">
+  <div class="step-label">Step 05 / 06</div>
+  <h2 class="section-title">Feature Selection & LOPO Cross-Validation</h2>
+  <p class="section-desc">The combined ECG + PCG bottleneck features and demographic data undergo two-stage selection, then evaluated with <strong style="color:var(--text)">Leave-One-Positive-Out cross-validation</strong> — purpose-built for extreme class imbalance.</p>
+  <div class="grid2" style="margin-bottom:22px;">
+    <div class="pp-box">
+      <div class="pp-title" style="color:var(--yellow)">TWO-STAGE FEATURE SELECTION</div>
+      <ul class="pp-list">
+        <li class="pp-item"><strong>Stage 1 — Variance Filtering:</strong> remove near-zero variance features</li>
+        <li class="pp-item"><strong>Stage 2 — Correlation Filtering:</strong> remove redundant correlated features</li>
+        <li class="pp-item"><strong>Result:</strong> reduced to <strong>45 dimensions</strong> — ECG + PCG + demographic variables</li>
+      </ul>
+    </div>
+    <div class="pp-box">
+      <div class="pp-title" style="color:var(--yellow)">LOPO CROSS-VALIDATION</div>
+      <ul class="pp-list">
+        <li class="pp-item">Each of 6 rounds holds out one RHD-positive child for independent testing</li>
+        <li class="pp-item">No synthetic oversampling — models learn from authentic class proportions</li>
+        <li class="pp-item">Every positive case is independently evaluated at least once</li>
+      </ul>
+    </div>
+  </div>
+  <div class="imbalance-viz">
+    <div class="imb-title">DATASET CLASS DISTRIBUTION — EXTREME IMBALANCE</div>
+    <div class="imb-bar-row">
+      <div class="imb-label" style="color:var(--green)">Normal</div>
+      <div class="imb-track"><div class="imb-fill" id="normalBar" style="background:rgba(0,245,160,0.2);color:var(--green);" data-w="98.04%">606 children</div></div>
+      <div class="imb-num" style="color:var(--green)">606</div>
+    </div>
+    <div class="imb-bar-row">
+      <div class="imb-label" style="color:var(--red)">RHD+</div>
+      <div class="imb-track"><div class="imb-fill" id="rhdBar" style="background:rgba(248,113,113,0.25);color:var(--red);" data-w="4%">6</div></div>
+      <div class="imb-num" style="color:var(--red)">6</div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:14px;">Total: <strong style="color:var(--text)">612 children</strong> &nbsp;·&nbsp; RHD prevalence: <strong style="color:var(--red)">0·98%</strong> &nbsp;·&nbsp; Class ratio: <strong style="color:var(--text)">101:1</strong></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- STEP 6 -->
+<section class="section" id="step6" data-voice="step6">
+  <div class="step-label">Step 06 / 06</div>
+  <h2 class="section-title">XGBoost Classification</h2>
+  <p class="section-desc">The 45-dimensional synchronized feature set is evaluated across multiple classifiers under LOPO. XGBoost achieved <strong style="color:var(--green)">perfect sensitivity of 1·00</strong> across all 6 rounds — not a single RHD-positive child was missed — with the highest overall diagnostic score (AUPRC 0·882).</p>
+  <div class="demo-controls">
+    <button class="demo-btn active" onclick="showResult('rhd',this)">Simulate: RHD+ Child</button>
+    <button class="demo-btn" onclick="showResult('normal',this)">Simulate: Normal Child</button>
+  </div>
+  <div class="result-card detected" id="resultCard">
+    <div class="result-badge detected" id="resultBadge">⚠ RHD DETECTED</div>
+    <div class="confidence-ring"><svg width="140" height="140" viewBox="0 0 140 140"><circle cx="70" cy="70" r="60" fill="none" stroke="#1e3050" stroke-width="8"/><circle id="ringCircle" cx="70" cy="70" r="60" fill="none" stroke="#ff6b35" stroke-width="8" stroke-dasharray="377" stroke-dashoffset="377" stroke-linecap="round"/></svg><div class="ring-text"><span class="ring-pct" id="ringPct">0%</span><span class="ring-lbl">CONFIDENCE</span></div></div>
+    <div style="color:var(--muted);font-size:13px;max-width:420px;margin:0 auto;line-height:1.75;" id="resultText">Synchronized ECG-PCG features indicate patterns consistent with subclinical Rheumatic Heart Disease. <strong style="color:var(--text)">Immediate cardiac referral recommended.</strong></div>
+  </div>
+  <div class="results-table-wrap">
+    <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;margin:36px 0 14px;">TABLE 1 — DIAGNOSTIC PERFORMANCE OF BEST-PERFORMING MODELS</div>
+    <table class="results-table"><thead><tr><th>MODEL</th><th>SENSITIVITY</th><th>PRECISION</th><th>F1</th><th>AUPRC</th></tr></thead><tbody id="resultsTableBody"></tbody></table>
+    <div class="table-note"><strong style="color:var(--text)">Sensitivity</strong> = proportion of RHD-positive children correctly identified. <strong style="color:var(--text)">Precision</strong> = proportion of flagged children who truly have RHD. <strong style="color:var(--text)">AUPRC</strong> — score closer to 1·00 indicates near-perfect diagnostic performance. Models ranked by sensitivity first, then AUPRC.</div>
+  </div>
+</section>
+
+<footer>
+  <p>Developed by <span>Mohammad Kamil</span> — School of Mathematics & Computer Science, IBA Karachi</p>
+  <p style="margin-top:6px;">In collaboration with <span>SIUT Hospital, Karachi</span> · Supervised by <span>Dr. Tariq Mahmood</span></p>
+  <p style="margin-top:8px;font-size:11px;color:var(--border)">Manuscript under review · Lancet Digital Health</p>
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// VOICEOVER SCRIPTS — per section
+// ═══════════════════════════════════════════════════════════
+const SCRIPTS = {
+  hero: {
+    label: 'INTRODUCTION',
+    text: `Rheumatic Heart Disease silently damages the hearts of children across low-income countries, often going undetected until irreversible valve damage has already occurred. This framework uses artificial intelligence to detect subclinical Rheumatic heart disease in school-aged children, before any symptoms appear, using nothing more than two simple heart signals captured by a portable device.`
+  },
+  step1: {
+    label: 'STEP 1 — SIGNAL ACQUISITION',
+    text: `We have collected from over 700 hundred children, aged five to fifteen, during school-based screening camps in Karachi, in collaboration with SIUT Hospital. Two signals are recorded from each child. The ECG captures the electrical activity of the heart. The PCG — or phonocardiogram — captures the actual sounds the heart makes. Together, these two signals give a complete picture of cardiac health that neither signal can provide alone. You can see the signals change between a child with RHD and a healthy child.`
+  },
+  step2: {
+    label: 'STEP 2 — PREPROCESSING',
+    text: `Raw heart signals are never clean. They contain powerline interference, baseline drift, and environmental noise from the recording environment. Before any learning begins, each signal goes through a dedicated cleaning pipeline. The ECG and PCG are processed separately because they carry different types of noise. On screen you can see the difference between a raw noisy signal and the clean version after preprocessing — the important cardiac patterns become clearly visible for both ECG and PCG. After cleaniing the final set of dataset consist of 612 children`
+  },
+  step3: {
+    label: 'STEP 3 — AUTOENCODERS',
+    text: `Once the signals are clean, they are fed into two separate neural networks called Vanilla Autoencoders , A vanilla autoencoder is a neural network that learns to compress data into a compact
+representation and then reconstruct it15, with the goal of preserving essential information while reducing dimensionality — so we make separate autoencoder one for ECG, one for PCG. Each autoencoder compresses its signal down to a compact sixty-four dimensional representation, called a bottleneck. This bottleneck captures only the most diagnostically important features of the signal, while discarding irrelevant noise. The autoencoder then reconstructs the original signal from this bottleneck, and as you can see on screen, the reconstruction closely matches the original — confirming the essential cardiac information has been preserved.`
+  },
+  step4: {
+    label: 'STEP 4 — SYNCHRONIZATION',
+    text: `This is the core innovation of our framework. After the two autoencoders extract their separate bottleneck features, a cross-modal synchronization module aligns them. The model learns to reconstruct a PCG signal using only ECG bottleneck features — and vice versa. When ECG features can successfully reconstruct the PCG signal, it confirms both modalities are describing the same underlying cardiac event from different perspectives. We validated this using using different statistical plots like PCA, t-SNE, and UMAP plots, achieving a cosine similarity of zero point seven three one and a Pearson correlation of zero point nine two four.`
+  },
+  step5: {
+    label: 'STEP 5 — FEATURE SELECTION',
+    text: `The synchronized features from both signals, combined with basic demographic information, are reduced through a two-stage selection process down to forty-five dimensions. This prevents the model from overfitting on the small dataset. As you can see on screen, our dataset contains only six RHD-positive children among six hundred and twelve total — an extreme imbalance of one hundred and one to one. This actually mirrors the real-world prevalence of RHD in screening populations, which is typically below one percent. Leave-One-Positive-Out cross-validation ensures every single positive case is independently tested.`
+  },
+  step6: {
+    label: 'STEP 6 — CLASSIFICATION & RESULTS',
+    text: `The synchronized features are passed to differnet modelsr. Across all six evaluation rounds, XGBoost detected every single RHD-positive child — missing none. A sensitivity of one hundred percent means zero missed diagnoses. The AUPRC score of zero point eight eight two confirms this was achieved without generating an excessive number of false alarms, keeping the tool practical for school-based deployment where unnecessary referrals impose real costs on families in low-resource settings.`
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// SPEECH ENGINE
+// ═══════════════════════════════════════════════════════════
+let synth = window.speechSynthesis;
+let currentUtterance = null;
+let currentSection = null;
+let isPaused = false;
+let isMuted = false;
+let spokenSections = new Set();
+
+function speak(key) {
+  if (isMuted) return;
+  if (currentSection === key && synth.speaking) return; // already reading this section
+  
+  stopVoice(false);
+  currentSection = key;
+  const script = SCRIPTS[key];
+  if (!script) return;
+
+  // Update bar
+  const bar = document.getElementById('voiceBar');
+  bar.classList.add('show');
+  document.getElementById('vbSection').textContent = script.label;
+  document.getElementById('vbCaption').innerHTML = `<span>${script.text.substring(0,80)}...</span>`;
+  document.getElementById('vbWaves').classList.remove('paused');
+  document.getElementById('vbPauseIcon').style.display = 'block';
+  document.getElementById('vbPlayIcon').style.display = 'none';
+
+  const utter = new SpeechSynthesisUtterance(script.text);
+  utter.rate = 1.12;
+  utter.pitch = 0.9;
+  utter.volume = 1.0;
+
+  // Try to pick a good English voice
+  const voices = synth.getVoices();
+const preferred = voices.find(v=>v.name.includes('Google UK English Male'))
+  || voices.find(v=>v.name.includes('Microsoft David'))
+  || voices.find(v=>v.name.includes('Microsoft Mark'))
+  || voices.find(v=>v.name.includes('Daniel'))
+  || voices.find(v=>v.lang==='en-GB'&&v.name.toLowerCase().includes('male'))
+  || voices.find(v=>v.lang.startsWith('en'));
+if (preferred) utter.voice = preferred;
+
+  // Progress simulation
+  let prog = 0;
+  const dur = script.text.length * 55; // rough ms estimate
+  const progEl = document.getElementById('vbProgress');
+  progEl.style.width = '0%';
+  const progInt = setInterval(()=>{
+    prog += 100/dur*200;
+    if(prog>98)prog=98;
+    progEl.style.width = prog + '%';
+  },200);
+
+  utter.onend = () => {
+    clearInterval(progInt);
+    progEl.style.width = '100%';
+    document.getElementById('vbWaves').classList.add('paused');
+    document.getElementById('vbPauseIcon').style.display = 'none';
+    document.getElementById('vbPlayIcon').style.display = 'block';
+    setTimeout(()=>{ progEl.style.width='0%'; },1000);
+  };
+
+  utter.onerror = () => { clearInterval(progInt); };
+
+  currentUtterance = utter;
+  isPaused = false;
+  synth.speak(utter);
+}
+
+function togglePause() {
+  if (!synth.speaking && !isPaused) return;
+  if (isPaused) {
+    synth.resume();
+    isPaused = false;
+    document.getElementById('vbWaves').classList.remove('paused');
+    document.getElementById('vbPauseIcon').style.display = 'block';
+    document.getElementById('vbPlayIcon').style.display = 'none';
+  } else {
+    synth.pause();
+    isPaused = true;
+    document.getElementById('vbWaves').classList.add('paused');
+    document.getElementById('vbPauseIcon').style.display = 'none';
+    document.getElementById('vbPlayIcon').style.display = 'block';
+  }
+}
+
+function stopVoice(hideBar=true) {
+  synth.cancel();
+  isPaused = false;
+  currentSection = null;
+  document.getElementById('vbWaves').classList.add('paused');
+  if(hideBar) {
+    document.getElementById('voiceBar').classList.remove('show');
+    document.getElementById('vbProgress').style.width='0%';
+  }
+}
+
+function toggleMute() {
+  isMuted = !isMuted;
+  const btn = document.getElementById('vbMuteBtn');
+  if (isMuted) {
+    synth.cancel();
+    btn.textContent = 'UNMUTE';
+    btn.classList.add('active');
+    document.getElementById('vbWaves').classList.add('paused');
+  } else {
+    btn.textContent = 'MUTE';
+    btn.classList.remove('active');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// INTERSECTION OBSERVER — scroll triggers voice
+// ═══════════════════════════════════════════════════════════
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting && entry.intersectionRatio > 0.3) {
+      const key = entry.target.getAttribute('data-voice');
+      if (key && key !== currentSection) {
+        speak(key);
+      }
+    }
+  });
+}, { threshold: 0.3 });
+
+// Observe all sections after DOM ready
+window.addEventListener('load', () => {
+  document.querySelectorAll('[data-voice]').forEach(el => observer.observe(el));
+});
+
+// ═══════════════════════════════════════════════════════════
+// CANVAS ANIMATIONS
+// ═══════════════════════════════════════════════════════════
+let patientMode='rhd', phase=0;
+
+// Heart bg
+(function heartBg(){
+  const canvas=document.getElementById('heartCanvas');
+  const ctx=canvas.getContext('2d');
+  const particles=[];
+  function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
+  resize();window.addEventListener('resize',resize);
+  for(let i=0;i<18;i++){particles.push({x:Math.random()*window.innerWidth,y:Math.random()*window.innerHeight,size:Math.random()*18+6,speed:Math.random()*0.4+0.15,opacity:Math.random()*0.4+0.1,pulse:Math.random()*Math.PI*2,drift:Math.random()*0.6-0.3});}
+  function drawHeart(ctx,x,y,size,opacity,color){ctx.save();ctx.globalAlpha=opacity;ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(x,y+size*0.3);ctx.bezierCurveTo(x,y,x-size*0.5,y,x-size*0.5,y+size*0.2);ctx.bezierCurveTo(x-size*0.5,y+size*0.55,x,y+size*0.7,x,y+size*0.9);ctx.bezierCurveTo(x,y+size*0.7,x+size*0.5,y+size*0.55,x+size*0.5,y+size*0.2);ctx.bezierCurveTo(x+size*0.5,y,x,y,x,y+size*0.3);ctx.fill();ctx.restore();}
+  let ep=0;
+  function drawEcg(){const W=canvas.width,H=canvas.height;ctx.beginPath();ctx.strokeStyle='rgba(0,229,255,0.1)';ctx.lineWidth=1.5;for(let x=0;x<W;x++){const beat=((x*0.025+ep)%(Math.PI*2))%(Math.PI*1.4);let y=H*0.5;if(beat>0.45&&beat<0.55)y=H*0.5-H*0.07;else if(beat>0.55&&beat<0.65)y=H*0.5+H*0.04;else if(beat>0.65&&beat<0.7)y=H*0.5-H*0.18;else if(beat>0.7&&beat<0.8)y=H*0.5-H*0.05;else if(beat>0.8&&beat<1.2)y=H*0.5-Math.sin((beat-0.8)*Math.PI/0.4)*H*0.06;x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}ctx.stroke();ep+=0.01;}
+  function loop(){ctx.clearRect(0,0,canvas.width,canvas.height);drawEcg();particles.forEach(p=>{p.pulse+=0.03;const sc=1+Math.sin(p.pulse)*0.08;const col=p.pulse%6<3?'rgba(0,229,255,':'rgba(167,139,250,';drawHeart(ctx,p.x,p.y,p.size*sc,p.opacity,col+'1)');p.y-=p.speed;p.x+=p.drift;if(p.y<-40){p.y=canvas.height+20;p.x=Math.random()*canvas.width;}if(p.x<-40||p.x>canvas.width+40){p.x=Math.random()*canvas.width;p.y=canvas.height+20;}});requestAnimationFrame(loop);}
+  loop();
+})();
+
+function ecgWave(x,ph,mode){
+  const beat=((x*0.04+ph)%(Math.PI*2))%(Math.PI*1.4);let y=0;
+  if(beat<0.4)y=Math.sin(beat*Math.PI/0.4)*0.14;
+  else if(beat<0.55)y=-Math.sin((beat-0.4)*Math.PI/0.15)*0.24;
+  else if(beat<0.65)y=Math.sin((beat-0.55)*Math.PI/0.1)*1.0;
+  else if(beat<0.78)y=-Math.sin((beat-0.65)*Math.PI/0.13)*0.33;
+  else if(beat<1.2)y=Math.sin((beat-0.78)*Math.PI/0.42)*0.28;
+  if(mode==='rhd')y+=Math.sin(x*0.9+ph*3)*0.05;
+  return y;
+}
+function pcgWave(x,ph,mode){
+  const beat=((x*0.04+ph)%(Math.PI*2))%(Math.PI*1.4);let y=0;
+  if(beat<0.3)y=Math.sin(beat*Math.PI/0.15)*Math.exp(-beat*8)*0.8;
+  else if(beat>0.8&&beat<1.1){const b2=beat-0.8;y=Math.sin(b2*Math.PI/0.15)*Math.exp(-b2*10)*0.58;}
+  if(mode==='rhd'&&beat>0.3&&beat<0.8)y+=Math.sin(x*1.3+ph*5)*0.26*Math.exp(-(beat-0.55)*(beat-0.55)*4);
+  return y;
+}
+function noisyEcg(x,ph){return ecgWave(x,ph,'normal')+(Math.sin(x*0.75+ph*8)*0.15)+(Math.sin(x*0.045)*0.13)+(Math.random()-0.5)*0.07;}
+function noisyPcg(x,ph){return pcgWave(x,ph,'normal')+(Math.sin(x*0.6+ph*7)*0.11)+(Math.random()-0.5)*0.055;}
+
+function drawSignal(id,fn,col,ph,mode,h,alpha,dashed,extra){
+  const c=document.getElementById(id);if(!c)return;
+  const ctx=c.getContext('2d'),dpr=window.devicePixelRatio||1;
+  const W=c.width=c.offsetWidth*dpr,H=c.height=(h||85)*dpr;
+  if(!extra)ctx.clearRect(0,0,W,H);
+  if(!extra){ctx.strokeStyle='rgba(30,48,80,0.4)';ctx.lineWidth=1;for(let i=0;i<=3;i++){const y=H/3*i;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}}
+  ctx.beginPath();ctx.strokeStyle=col;ctx.lineWidth=(extra?1.5:2)*dpr;ctx.globalAlpha=alpha||1;ctx.shadowColor=col;ctx.shadowBlur=alpha===1&&!dashed?4:0;
+  if(dashed)ctx.setLineDash([5*dpr,4*dpr]);
+  for(let x=0;x<W;x++){const y=H/2-fn(x/dpr,ph,mode)*H*0.36;x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+}
+function drawSync(ph){
+  const c=document.getElementById('syncCanvas');if(!c)return;
+  const ctx=c.getContext('2d'),dpr=window.devicePixelRatio||1;
+  const W=c.width=c.offsetWidth*dpr,H=c.height=95*dpr;
+  ctx.clearRect(0,0,W,H);
+  const dl=(fn,col,alpha,oy)=>{ctx.beginPath();ctx.strokeStyle=col;ctx.globalAlpha=alpha;ctx.lineWidth=1.5*dpr;for(let x=0;x<W;x++){const y=H/2+oy*dpr-fn(x/dpr,ph,patientMode)*H*0.24;x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}ctx.stroke();ctx.globalAlpha=1;};
+  dl(ecgWave,'#00e5ff',0.38,-15);dl(pcgWave,'#ff6b35',0.38,15);
+  ctx.beginPath();ctx.strokeStyle='#a78bfa';ctx.lineWidth=2.5*dpr;ctx.shadowColor='#a78bfa';ctx.shadowBlur=8;
+  for(let x=0;x<W;x++){const y=H/2-(ecgWave(x/dpr,ph,patientMode)*0.5+pcgWave(x/dpr,ph,patientMode)*0.5)*H*0.32;x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}ctx.stroke();
+}
+function drawCrossEcgToPcg(ph){
+  drawSignal('ecgBottleneckIn',ecgWave,'#00e5ff',ph,patientMode,70,1,false,false);
+  drawSignal('pcgFromEcg',pcgWave,'#ff6b35',ph,patientMode,70,1,false,false);
+}
+function drawCrossPcgToEcg(ph){
+  drawSignal('pcgBottleneckIn',pcgWave,'#ff6b35',ph,patientMode,70,1,false,false);
+  const c=document.getElementById('ecgFromPcg');if(!c)return;
+  const ctx=c.getContext('2d'),dpr=window.devicePixelRatio||1;
+  const W=c.width=c.offsetWidth*dpr,H=c.height=70*dpr;
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle='rgba(30,48,80,0.4)';ctx.lineWidth=1;for(let i=0;i<=3;i++){const y=H/3*i;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  ctx.beginPath();ctx.strokeStyle='rgba(0,229,255,0.55)';ctx.lineWidth=2*dpr;ctx.shadowColor='#00e5ff';ctx.shadowBlur=3;
+  for(let x=0;x<W;x++){const partial=ecgWave(x/dpr,ph,'normal')*0.45;const y=H/2-partial*H*0.36+Math.sin(x*0.025)*3*dpr;x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}ctx.stroke();
+}
+
+function animate(){
+  phase+=0.018;
+  drawSignal('ecgRawLive',ecgWave,'#00e5ff',phase,patientMode,85,1);
+  drawSignal('pcgRawLive',pcgWave,'#ff6b35',phase,patientMode,85,1);
+  drawSignal('ecgBefore',noisyEcg,'#64748b',phase,'normal',70,1);
+  drawSignal('ecgAfter',ecgWave,'#00e5ff',phase,'normal',70,1);
+  drawSignal('pcgBefore',noisyPcg,'#64748b',phase,'normal',70,1);
+  drawSignal('pcgAfter',pcgWave,'#ff6b35',phase,'normal',70,1);
+  drawSignal('reconEcg',ecgWave,'#00e5ff',phase,patientMode,80,1);
+  drawSignal('reconEcg',ecgWave,'rgba(0,229,255,0.3)',phase+0.025,patientMode,80,1,true,true);
+  drawSignal('reconPcg',pcgWave,'#ff6b35',phase,patientMode,80,1);
+  drawSignal('reconPcg',pcgWave,'rgba(255,107,53,0.3)',phase+0.025,patientMode,80,1,true,true);
+  drawCrossEcgToPcg(phase);
+  drawCrossPcgToEcg(phase);
+  drawSync(phase);
+  requestAnimationFrame(animate);
+}
+
+function setPatient(mode,btn){patientMode=mode;document.querySelectorAll('#step1 .demo-controls .demo-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
+
+function buildTable(){
+  const models=[
+    {name:'XGBoost',best:true,recall:1.00,precision:0.67,f1:0.80,auprc:0.882},
+    {name:'Logistic Regression',best:false,recall:1.00,precision:0.55,f1:0.71,auprc:0.660},
+    {name:'Extra Trees',best:false,recall:1.00,precision:0.55,f1:0.71,auprc:0.609},
+    {name:'Balanced Random Forest',best:false,recall:0.83,precision:0.71,f1:0.77,auprc:0.830},
+    {name:'Random Forest',best:false,recall:0.83,precision:0.62,f1:0.71,auprc:0.596},
+  ];
+  const tb=document.getElementById('resultsTableBody');if(!tb)return;
+  tb.innerHTML=models.map(m=>`<tr class="${m.best?'best-row':''}"><td><div class="model-name">${m.name}${m.best?'<span class="star-badge">SELECTED</span>':''}</div><div class="recall-bar" style="width:70px;"><div class="recall-fill" data-w="${m.recall*100}%"></div></div></td><td><span class="val-green">${m.recall===1?'1·00':m.recall.toFixed(2)}</span></td><td><span class="val-cyan">${m.precision.toFixed(2).replace('.','\u00B7')}</span></td><td><span class="val-cyan">${m.f1.toFixed(2).replace('.','\u00B7')}</span></td><td><span class="val-sync">${m.auprc.toFixed(3).replace('.','\u00B7')}</span></td></tr>`).join('');
+  setTimeout(()=>{tb.querySelectorAll('.recall-fill').forEach(el=>{el.style.width=el.dataset.w;});},400);
+}
+
+let ringBusy=false;
+function animRing(pct,col){
+  if(ringBusy)return;ringBusy=true;
+  const C=377,circle=document.getElementById('ringCircle'),el=document.getElementById('ringPct');
+  circle.style.stroke=col;circle.style.strokeDashoffset=C;let cur=C,cnt=0;
+  const step=()=>{cur-=(cur-(C-pct/100*C))*0.06;cnt+=(pct-cnt)*0.06;circle.style.strokeDashoffset=cur;el.textContent=Math.round(cnt)+'%';
+  if(Math.abs(cur-(C-pct/100*C))>0.5)requestAnimationFrame(step);else{circle.style.strokeDashoffset=C-pct/100*C;el.textContent=pct+'%';ringBusy=false;}};requestAnimationFrame(step);
+}
+function showResult(mode,btn){
+  document.querySelectorAll('#step6 .demo-controls .demo-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');ringBusy=false;
+  const card=document.getElementById('resultCard'),badge=document.getElementById('resultBadge'),text=document.getElementById('resultText');
+  if(mode==='rhd'){card.className='result-card detected';badge.className='result-badge detected';badge.textContent='⚠ RHD DETECTED';text.innerHTML='Synchronized ECG-PCG features indicate subclinical RHD. Abnormal valve turbulence markers at the mitral position. <strong style="color:var(--text)">Immediate cardiac referral recommended.</strong>';animRing(94,'#ff6b35');}
+  else{card.className='result-card normal';badge.className='result-badge normal';badge.textContent='✓ NO RHD DETECTED';text.innerHTML='No features consistent with RHD found. Signals within normal paediatric range. <strong style="color:var(--text)">No cardiac referral required.</strong>';animRing(97,'#00f5a0');}
+}
+function goTo(id,btn){document.getElementById(id).scrollIntoView({behavior:'smooth'});document.querySelectorAll('.nav-step').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
+
+window.addEventListener('load',()=>{
+  animate();buildTable();
+  setTimeout(()=>{
+    const nb=document.getElementById('normalBar'),rb=document.getElementById('rhdBar');
+    if(nb)nb.style.width='98.04%';if(rb){rb.style.width='4%';rb.style.minWidth='55px';}
+  },500);
+  setTimeout(()=>animRing(94,'#ff6b35'),600);
+  // Load voices (needed for Chrome)
+  if(speechSynthesis.onvoiceschanged!==undefined){speechSynthesis.onvoiceschanged=()=>{};}
+});
+</script>
+</body>
+</html>
