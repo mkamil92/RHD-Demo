@@ -478,7 +478,7 @@ function speak(key) {
   document.getElementById('vbPlayIcon').style.display = 'none';
 
   const utter = new SpeechSynthesisUtterance(script.text);
-  utter.rate = 1.12;
+  utter.rate = 1.0;
   utter.pitch = 0.9;
   utter.volume = 1.0;
 
